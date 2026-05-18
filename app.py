@@ -35,6 +35,19 @@ def _save_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _deviceportal_config() -> Dict[str, Any]:
+    candidates = [
+        Path.home() / "projects" / "Joormann-Media-Deviceportal" / "var" / "data" / "config.json",
+        Path("/home/djanebmb/projects/Joormann-Media-Deviceportal/var/data/config.json"),
+        Path("/opt/joormann-media-deviceportal/var/data/config.json"),
+    ]
+    for candidate in candidates:
+        data = _load_json(candidate, {})
+        if isinstance(data, dict) and data:
+            return data
+    return {}
+
+
 def resolve_machine_id() -> str:
     env_mid = os.getenv("PORTAL_MACHINE_ID", "").strip()
     if env_mid:
@@ -77,9 +90,17 @@ def load_config() -> Dict[str, Any]:
     cfg = _load_json(PORTAL_CFG_PATH, {})
     if not isinstance(cfg, dict):
         cfg = {}
+    deviceportal = _deviceportal_config()
     portal = cfg.setdefault("portal", {})
     portal.setdefault("machine_id", resolve_machine_id())
     portal.setdefault("url", resolve_portal_url(cfg))
+    portal.setdefault("registration_token", str(deviceportal.get("registration_token") or "").strip())
+    # Deviceportal may already have an active client id and outbound key
+    if not str(portal.get("client_id") or "").strip():
+        portal["client_id"] = str(deviceportal.get("client_id") or "").strip()
+    panel_keys = deviceportal.get("panel_api_keys") if isinstance(deviceportal.get("panel_api_keys"), dict) else {}
+    if not str(portal.get("api_key") or "").strip():
+        portal["api_key"] = str(panel_keys.get("raspi_to_admin") or "").strip()
     cfg.setdefault("listener", {})
     cfg["listener"].setdefault("hotword_service_url", os.getenv("HOTWORD_SERVICE_URL", "http://127.0.0.1:8120"))
     cfg["listener"].setdefault("dispatch_url", os.getenv("HOTWORD_RUNTIME_DISPATCH_URL", "https://joormann-family.de/admin/jarvis/chat?conversation=95"))
@@ -202,7 +223,7 @@ def link_page():
     result = None
     if request.method == "POST":
         portal_url = str(request.form.get("portal_url") or "").strip()
-        registration_token = str(request.form.get("registration_token") or "").strip()
+        registration_token = str(request.form.get("registration_token") or cfg.get("portal", {}).get("registration_token") or "").strip()
         node_name = str(request.form.get("node_name") or "Hotword Listener Workstation").strip()
         if not portal_url or not registration_token:
             error = "Portal-URL und Registrierungstoken sind erforderlich."
@@ -223,6 +244,7 @@ def link_page():
                     auth = data.get("auth") or {}
                     node = data.get("node") or {}
                     cfg["portal"]["url"] = portal_url
+                    cfg["portal"]["registration_token"] = registration_token
                     cfg["portal"]["client_id"] = str(auth.get("clientId") or cfg["portal"].get("client_id") or "")
                     cfg["portal"]["api_key"] = str(auth.get("apiKey") or cfg["portal"].get("api_key") or "")
                     cfg["portal"]["node_uuid"] = str(node.get("uuid") or cfg["portal"].get("node_uuid") or "")
@@ -237,7 +259,7 @@ def link_page():
 
     portal = cfg.get("portal") or {}
     portal_status = {
-        "registered": bool(portal.get("client_id") and portal.get("api_key")),
+        "registered": bool(portal.get("client_id") and portal.get("api_key") and portal.get("node_uuid")),
         "portal_url": portal.get("url"),
         "node_uuid": portal.get("node_uuid"),
         "node_slug": portal.get("node_slug"),
@@ -249,7 +271,7 @@ def link_page():
     }
     form = {
         "portal_url": str(portal_status.get("portal_url") or ""),
-        "registration_token": "",
+        "registration_token": str(portal.get("registration_token") or ""),
         "node_name": str(portal.get("node_name") or "Hotword-Listener Workstation"),
     }
     listener = cfg.get("listener") or {}
@@ -271,7 +293,7 @@ def api_portal_status():
     portal = cfg.get("portal") or {}
     return jsonify({
         "ok": True,
-        "registered": bool(portal.get("client_id") and portal.get("api_key")),
+        "registered": bool(portal.get("client_id") and portal.get("api_key") and portal.get("node_uuid")),
         "portal_url": portal.get("url"),
         "node_uuid": portal.get("node_uuid"),
         "node_slug": portal.get("node_slug"),
