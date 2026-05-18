@@ -236,9 +236,33 @@ def link_page():
                 error = f"Portal nicht erreichbar: {exc}"
 
     portal = cfg.get("portal") or {}
+    portal_status = {
+        "registered": bool(portal.get("client_id") and portal.get("api_key")),
+        "portal_url": portal.get("url"),
+        "node_uuid": portal.get("node_uuid"),
+        "node_slug": portal.get("node_slug"),
+        "machine_id": portal.get("machine_id"),
+        "client_id": portal.get("client_id"),
+        "mac_address": portal.get("mac_address"),
+        "outbound_api_key_masked": ("***" + str(portal.get("api_key") or "")[-4:]) if portal.get("api_key") else None,
+        "admin_api_key_configured": bool(portal.get("admin_api_key")),
+    }
+    form = {
+        "portal_url": str(portal_status.get("portal_url") or ""),
+        "registration_token": "",
+        "node_name": str(portal.get("node_name") or "Hotword-Listener Workstation"),
+    }
     listener = cfg.get("listener") or {}
     hotword_health = _hotword_service_health(str(listener.get("hotword_service_url") or "http://127.0.0.1:8120"))
-    return render_template("link.html", error=error, result=result, portal_status=portal, listener=listener, hotword_health=hotword_health)
+    return render_template(
+        "link.html",
+        error=error,
+        result=result,
+        form=form,
+        portal_status=portal_status,
+        listener=listener,
+        hotword_health=hotword_health,
+    )
 
 
 @app.get("/api/portal/status")

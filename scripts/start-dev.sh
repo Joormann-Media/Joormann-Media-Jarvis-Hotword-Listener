@@ -22,6 +22,17 @@ get_local_ip() {
   echo "$ip"
 }
 
+is_port_in_use() {
+  local port="$1"
+  python3 - "$port" <<'PY' >/dev/null 2>&1
+import socket, sys
+port = int(sys.argv[1])
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    sock.settimeout(0.5)
+    sys.exit(0 if sock.connect_ex(("127.0.0.1", port)) == 0 else 1)
+PY
+}
+
 print_status_block() {
   local local_ip="$1"
   cat <<EOT
@@ -128,10 +139,14 @@ manager_pid=$!
 echo "$manager_pid" > "$MANAGER_PID_FILE"
 echo "[Flask]    Gestartet (PID $manager_pid)"
 
-nohup "$PYTHON_BIN" -m uvicorn src.main:app --app-dir "$PROJECT_ROOT/services/hotword-service" --host 0.0.0.0 --port "$HOTWORD_PORT" > "$HOTWORD_LOG_FILE" 2>&1 &
-hotword_pid=$!
-echo "$hotword_pid" > "$HOTWORD_PID_FILE"
-echo "[Runtime]  Gestartet (PID $hotword_pid)"
+if is_port_in_use "$HOTWORD_PORT"; then
+  echo "[Runtime]  Bereits aktiv (Port $HOTWORD_PORT belegt) — übersprungen"
+else
+  nohup "$PYTHON_BIN" -m uvicorn src.main:app --app-dir "$PROJECT_ROOT/services/hotword-service" --host 0.0.0.0 --port "$HOTWORD_PORT" > "$HOTWORD_LOG_FILE" 2>&1 &
+  hotword_pid=$!
+  echo "$hotword_pid" > "$HOTWORD_PID_FILE"
+  echo "[Runtime]  Gestartet (PID $hotword_pid)"
+fi
 
 for _ in {1..20}; do
   if curl -fsS "http://127.0.0.1:${FLASK_PORT}/health" >/dev/null 2>&1; then
