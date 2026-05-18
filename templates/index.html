@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hotword-Listener Index</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #020617; color: #e5e7eb; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 18px; }
+    .card { background: #111827; border: 1px solid #334155; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    .kv { font-size: 13px; margin: 4px 0; }
+    .btnrow { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+    button { padding: 9px 12px; border-radius: 8px; border: 1px solid #2563eb; background: #2563eb; color: #fff; font-weight: 600; cursor: pointer; }
+    button.alt { background:#0f172a; border-color:#475569; }
+    pre { white-space: pre-wrap; color: #93c5fd; }
+  </style>
+</head>
+<body>
+{% include "_nav.html" %}
+<div class="wrap">
+  <div class="card">
+    <h2>Listener Übersicht</h2>
+    <div class="kv"><strong>Node registriert:</strong> {{ node_registered and 'ja' or 'nein' }}</div>
+    <div class="kv"><strong>Node Slug:</strong> {{ node_slug or '—' }}</div>
+    <div class="kv"><strong>Node UUID:</strong> {{ node_uuid or '—' }}</div>
+    <div class="kv"><strong>Machine ID:</strong> {{ machine_id or '—' }}</div>
+    <div class="kv"><strong>Panel URL:</strong> {{ portal_url or '—' }}</div>
+    <div class="kv"><strong>User verlinkt:</strong> {{ user_linked and 'ja' or 'nein' }}{% if user_name %} ({{ user_name }}){% endif %}</div>
+  </div>
+
+  <div class="card">
+    <h3>Runtime / Service Control</h3>
+    <div class="btnrow">
+      <button onclick="postJson('/api/runtime/start')">Runtime EIN</button>
+      <button class="alt" onclick="postJson('/api/runtime/stop')">Runtime AUS</button>
+      <button class="alt" onclick="postJson('/api/runtime/restart')">Runtime RESTART</button>
+      <button class="alt" onclick="postJson('/api/flask/restart')">Flask RESTART</button>
+      <button class="alt" onclick="postJson('/api/flask/stop')">Flask AUS</button>
+      <button class="alt" onclick="refreshStatus()">Status neu laden</button>
+    </div>
+    <pre id="out">{{ runtime_status|tojson(indent=2) }}</pre>
+  </div>
+</div>
+<script>
+async function postJson(url) {
+  const out = document.getElementById('out');
+  out.textContent = 'läuft ...';
+  try {
+    const res = await fetch(url, {method: 'POST'});
+    const data = await res.json();
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (e) {
+    out.textContent = String(e);
+  }
+}
+async function refreshStatus() {
+  const out = document.getElementById('out');
+  try {
+    const res = await fetch('/api/runtime/status');
+    const data = await res.json();
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (e) {
+    out.textContent = String(e);
+  }
+}
+</script>
+</body>
+</html>

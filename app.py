@@ -6,6 +6,7 @@ import socket
 import subprocess
 import time
 import uuid
+import re
 from pathlib import Path
 from typing import Any, Dict
 
@@ -104,6 +105,7 @@ def load_config() -> Dict[str, Any]:
     cfg.setdefault("listener", {})
     cfg["listener"].setdefault("hotword_service_url", os.getenv("HOTWORD_SERVICE_URL", "http://127.0.0.1:8120"))
     cfg["listener"].setdefault("dispatch_url", os.getenv("HOTWORD_RUNTIME_DISPATCH_URL", "https://joormann-family.de/admin/jarvis/chat?conversation=95"))
+    cfg.setdefault("hotword_profiles", [])
     cfg.setdefault("user_link", {})
     cfg["user_link"].setdefault("linked", False)
     cfg["user_link"].setdefault("username", "")
@@ -211,9 +213,53 @@ def _mask_token(token: str) -> str:
     return ("*" * max(0, len(t) - 8)) + t[-8:]
 
 
+def _slugify(value: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", value.strip().lower())
+    base = re.sub(r"-{2,}", "-", base).strip("-")
+    return base or f"hotword-{uuid.uuid4().hex[:8]}"
+
+
+def _hotword_base(cfg: Dict[str, Any]) -> str:
+    return str((cfg.get("listener") or {}).get("hotword_service_url") or "http://127.0.0.1:8120").rstrip("/")
+
+
+def _hotword_request(method: str, path: str, cfg: Dict[str, Any], timeout: int = 20, **kwargs: Any) -> Dict[str, Any]:
+    url = f"{_hotword_base(cfg)}{path}"
+    try:
+        res = requests.request(method=method.upper(), url=url, timeout=timeout, **kwargs)
+        body = res.json() if res.headers.get("content-type", "").startswith("application/json") else {"raw": res.text}
+        return {"ok": res.ok, "status": res.status_code, "data": body}
+    except Exception as exc:
+        return {"ok": False, "status": 0, "data": {"error": str(exc)}}
+
+
+def _build_hotword_id(username: str, hotword: str) -> str:
+    return _slugify(f"{username}-{hotword}")
+
+
 @app.get("/")
+def root():
+    return redirect("/index")
+
+
+@app.get("/index")
 def index():
-    return redirect("/link")
+    cfg = load_config()
+    runtime_status = _hotword_request("GET", "/runtime/status", cfg, timeout=10)
+    portal = cfg.get("portal") or {}
+    node_registered = bool(portal.get("client_id") and portal.get("api_key") and portal.get("node_uuid"))
+    user_link = cfg.get("user_link") or {}
+    return render_template(
+        "index.html",
+        node_registered=node_registered,
+        portal_url=portal.get("url"),
+        node_slug=portal.get("node_slug"),
+        node_uuid=portal.get("node_uuid"),
+        machine_id=portal.get("machine_id"),
+        user_linked=bool(user_link.get("linked") and user_link.get("api_token")),
+        user_name=user_link.get("username"),
+        runtime_status=runtime_status,
+    )
 
 
 @app.get("/health")
@@ -234,9 +280,135 @@ def info():
                 "portal_status": "/api/portal/status",
                 "portal_sync": "/api/portal/sync",
                 "runtime_status": "/api/runtime/status",
+                "index": "/index",
+                "hotword_config": "/hotword-config",
             },
             "listener": cfg.get("listener") or {},
         }
+    )
+
+
+@app.route("/hotword-config", methods=["GET", "POST"])
+def hotword_config_page():
+    cfg = load_config()
+    message = ""
+    error = ""
+    action_result: Dict[str, Any] | None = None
+
+    if request.method == "POST":
+        action = str(request.form.get("action") or "").strip()
+        if action == "save_profile":
+            username = str(request.form.get("username") or "").strip()
+            hotword = str(request.form.get("hotword") or "").strip()
+            if not username or not hotword:
+                error = "Username und Hotword sind erforderlich."
+            else:
+                hotword_id = _build_hotword_id(username, hotword)
+                variants = [hotword, f"hey {hotword}"]
+                create_payload = {
+                    "id": hotword_id,
+                    "label": f"{username}: {hotword}",
+                    "phrase": hotword,
+                    "phrases": variants,
+                    "runtime_enabled": True,
+                }
+                create_resp = _hotword_request("POST", "/hotwords", cfg, json=create_payload)
+                if not create_resp["ok"] and int(create_resp.get("status") or 0) == 409:
+                    create_resp = _hotword_request("PATCH", f"/hotwords/{hotword_id}", cfg, json={"phrase": hotword, "phrases": variants, "runtime_enabled": True, "is_active": True})
+                if not create_resp["ok"]:
+                    error = f"Hotword speichern fehlgeschlagen: {create_resp['data']}"
+                else:
+                    profiles = cfg.get("hotword_profiles") if isinstance(cfg.get("hotword_profiles"), list) else []
+                    profiles = [p for p in profiles if isinstance(p, dict) and p.get("id") != hotword_id]
+                    profiles.append({"id": hotword_id, "username": username, "hotword": hotword, "phrases": variants, "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+                    cfg["hotword_profiles"] = profiles
+                    save_config(cfg)
+                    _hotword_request("POST", "/runtime/reload-hotwords", cfg)
+                    message = "Hotword-Profil gespeichert."
+                    action_result = create_resp
+        elif action == "set_audio_input":
+            device_name = str(request.form.get("device_name") or "").strip()
+            resp = _hotword_request("POST", "/runtime/audio-input", cfg, json={"device_name": device_name})
+            if resp["ok"]:
+                message = "Mikrofonquelle aktualisiert."
+            else:
+                error = f"Mikrofonquelle konnte nicht gesetzt werden: {resp['data']}"
+            action_result = resp
+        elif action == "upload_sample":
+            hotword_id = str(request.form.get("hotword_id") or "").strip()
+            file = request.files.get("sample_file")
+            if not hotword_id or not file:
+                error = "Hotword und Sample-Datei sind erforderlich."
+            else:
+                resp = _hotword_request(
+                    "POST",
+                    f"/hotwords/{hotword_id}/samples/upload",
+                    cfg,
+                    files={"file": (file.filename or "sample.webm", file.stream, file.mimetype or "application/octet-stream")},
+                )
+                if resp["ok"]:
+                    message = "Sample hochgeladen."
+                else:
+                    error = f"Sample-Upload fehlgeschlagen: {resp['data']}"
+                action_result = resp
+        elif action == "browser_recording":
+            hotword_id = str(request.form.get("hotword_id") or "").strip()
+            file = request.files.get("recording_file")
+            if not hotword_id or not file:
+                error = "Hotword und Browser-Aufnahme sind erforderlich."
+            else:
+                resp = _hotword_request(
+                    "POST",
+                    f"/hotwords/{hotword_id}/samples/browser-recording",
+                    cfg,
+                    files={"file": (file.filename or "recording.webm", file.stream, file.mimetype or "audio/webm")},
+                )
+                if resp["ok"]:
+                    message = "Browser-Aufnahme gespeichert."
+                else:
+                    error = f"Browser-Aufnahme fehlgeschlagen: {resp['data']}"
+                action_result = resp
+        elif action == "build_model":
+            hotword_id = str(request.form.get("hotword_id") or "").strip()
+            resp = _hotword_request("POST", f"/hotwords/{hotword_id}/build-model", cfg)
+            if resp["ok"]:
+                message = "Hotword-Modell gebaut."
+                _hotword_request("POST", "/runtime/reload-hotwords", cfg)
+            else:
+                error = f"Model-Build fehlgeschlagen: {resp['data']}"
+            action_result = resp
+        elif action == "test_hotword":
+            hotword_id = str(request.form.get("hotword_id") or "").strip()
+            file = request.files.get("test_file")
+            if not file:
+                error = "Test-Audiodatei fehlt."
+            else:
+                resp = _hotword_request(
+                    "POST",
+                    "/detect/upload",
+                    cfg,
+                    files={"file": (file.filename or "test.webm", file.stream, file.mimetype or "application/octet-stream")},
+                    data={"hotword_id": hotword_id} if hotword_id else None,
+                )
+                if resp["ok"]:
+                    message = "Hotword-Test durchgeführt."
+                else:
+                    error = f"Hotword-Test fehlgeschlagen: {resp['data']}"
+                action_result = resp
+
+    hotwords = _hotword_request("GET", "/hotwords", cfg)
+    devices = _hotword_request("GET", "/runtime/audio-devices", cfg)
+    runtime_status = _hotword_request("GET", "/runtime/status", cfg)
+    profiles = cfg.get("hotword_profiles") if isinstance(cfg.get("hotword_profiles"), list) else []
+    return render_template(
+        "hotword_config.html",
+        message=message,
+        error=error,
+        action_result=action_result,
+        profiles=profiles,
+        hotwords=hotwords.get("data", {}),
+        devices=devices.get("data", {}),
+        runtime_status=runtime_status.get("data", {}),
     )
 
 
@@ -459,6 +631,26 @@ def api_runtime_action(action: str):
         return jsonify({"ok": res.ok, "status": res.status_code, "response": data}), (200 if res.ok else 502)
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 502
+
+
+@app.post("/api/runtime/restart")
+def api_runtime_restart():
+    cfg = load_config()
+    stop_res = _hotword_request("POST", "/runtime/stop", cfg)
+    start_res = _hotword_request("POST", "/runtime/start", cfg)
+    ok = bool(start_res.get("ok"))
+    return jsonify({"ok": ok, "stop": stop_res, "start": start_res}), (200 if ok else 502)
+
+
+@app.post("/api/flask/<action>")
+def api_flask_control(action: str):
+    if action not in {"stop", "restart"}:
+        return jsonify({"ok": False, "error": "unsupported_action"}), 400
+    script = BASE_DIR / "scripts" / ("stop-dev.sh" if action == "stop" else "restart.sh")
+    if not script.exists():
+        return jsonify({"ok": False, "error": "script_missing", "path": str(script)}), 404
+    subprocess.Popen(["bash", str(script)], cwd=str(BASE_DIR), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return jsonify({"ok": True, "action": action, "message": f"Flask {action} gestartet"})
 
 
 if __name__ == "__main__":

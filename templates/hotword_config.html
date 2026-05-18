@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Hotword Config</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #020617; color: #e5e7eb; }
+    .wrap { max-width: 1024px; margin: 0 auto; padding: 18px; }
+    .card { background: #111827; border: 1px solid #334155; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+    input, select { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #e5e7eb; }
+    button { padding: 9px 12px; border-radius: 8px; border: 1px solid #2563eb; background: #2563eb; color: #fff; font-weight: 600; cursor: pointer; }
+    .err { color: #fca5a5; }
+    .ok { color: #86efac; }
+    .kv { font-size: 13px; margin: 4px 0; }
+    pre { white-space: pre-wrap; color: #93c5fd; }
+    .btnrow { display:flex; gap:8px; flex-wrap:wrap; }
+  </style>
+</head>
+<body>
+{% include "_nav.html" %}
+<div class="wrap">
+  <div class="card">
+    <h2>Hotword-Konfiguration (Multi-User)</h2>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    {% if message %}<div class="ok">{{ message }}</div>{% endif %}
+    <div class="kv">Regel: Erkennung auf <code>Hotword</code> und <code>hey Hotword</code>.</div>
+    <form method="post">
+      <input type="hidden" name="action" value="save_profile">
+      <div class="grid">
+        <div>
+          <label>User-Name</label>
+          <input name="username" placeholder="z. B. bea" required>
+        </div>
+        <div>
+          <label>Hotword</label>
+          <input name="hotword" placeholder="z. B. jarvis" required>
+        </div>
+      </div>
+      <div style="margin-top:10px;"><button type="submit">User-Hotword speichern</button></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Mikrofon-Auswahl</h3>
+    <form method="post">
+      <input type="hidden" name="action" value="set_audio_input">
+      <div class="grid">
+        <div>
+          <label>Aktive Quelle</label>
+          <select name="device_name">
+            <option value="">Standard</option>
+            {% for d in (devices.devices or []) %}
+            <option value="{{ d.value }}">{{ d.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:10px;"><button type="submit">Mikrofon setzen</button></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Samples hochladen / einsprechen</h3>
+    <div class="grid">
+      <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="upload_sample">
+        <label>Hotword</label>
+        <select name="hotword_id" required>
+          {% for h in (hotwords.hotwords or []) %}<option value="{{ h.id }}">{{ h.label }} ({{ h.id }})</option>{% endfor %}
+        </select>
+        <label style="margin-top:8px;">Datei-Upload</label>
+        <input type="file" name="sample_file" required>
+        <div style="margin-top:10px;"><button type="submit">Sample hochladen</button></div>
+      </form>
+
+      <div>
+        <label>Browser-Aufnahme (Mikro)</label>
+        <select id="recordHotwordId">
+          {% for h in (hotwords.hotwords or []) %}<option value="{{ h.id }}">{{ h.label }} ({{ h.id }})</option>{% endfor %}
+        </select>
+        <div class="btnrow" style="margin-top:8px;">
+          <button type="button" onclick="startRec()">Aufnahme starten</button>
+          <button type="button" onclick="stopRec()">Stop + speichern</button>
+        </div>
+        <div id="recState" class="kv">Status: idle</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Schritt 3: Hotword testen</h3>
+    <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="test_hotword">
+      <div class="grid">
+        <div>
+          <label>Hotword (optional Filter)</label>
+          <select name="hotword_id">
+            <option value="">Auto</option>
+            {% for h in (hotwords.hotwords or []) %}<option value="{{ h.id }}">{{ h.label }} ({{ h.id }})</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Test-Datei</label>
+          <input type="file" name="test_file" required>
+        </div>
+      </div>
+      <div class="btnrow" style="margin-top:10px;">
+        <button type="submit">Test ausführen</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Build + Runtime</h3>
+    <form method="post">
+      <input type="hidden" name="action" value="build_model">
+      <label>Hotword</label>
+      <select name="hotword_id" required>
+        {% for h in (hotwords.hotwords or []) %}<option value="{{ h.id }}">{{ h.label }} ({{ h.id }})</option>{% endfor %}
+      </select>
+      <div class="btnrow" style="margin-top:10px;">
+        <button type="submit">Modell bauen</button>
+        <button type="button" onclick="callRuntime('/api/runtime/reload-hotwords')">Runtime neu laden</button>
+        <button type="button" onclick="callRuntime('/api/runtime/start')">Runtime starten</button>
+        <button type="button" onclick="callRuntime('/api/runtime/stop')">Runtime stoppen</button>
+      </div>
+    </form>
+    <pre id="runtimeOut">{{ runtime_status|tojson(indent=2) }}</pre>
+  </div>
+
+  <div class="card">
+    <h3>Lokale User-Profile</h3>
+    <pre>{{ profiles|tojson(indent=2) }}</pre>
+  </div>
+
+  {% if action_result %}
+  <div class="card">
+    <h3>Letztes Ergebnis</h3>
+    <pre>{{ action_result|tojson(indent=2) }}</pre>
+  </div>
+  {% endif %}
+</div>
+<script>
+let mediaRecorder = null;
+let recChunks = [];
+let recStream = null;
+
+function setRecState(text) {
+  const el = document.getElementById('recState');
+  if (el) el.textContent = 'Status: ' + text;
+}
+
+async function startRec() {
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({audio: true});
+    mediaRecorder = new MediaRecorder(recStream);
+    recChunks = [];
+    mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) recChunks.push(e.data); };
+    mediaRecorder.start();
+    setRecState('recording');
+  } catch (e) {
+    setRecState('Fehler: ' + e);
+  }
+}
+
+async function stopRec() {
+  if (!mediaRecorder) return;
+  mediaRecorder.onstop = async () => {
+    try {
+      const blob = new Blob(recChunks, {type: 'audio/webm'});
+      const file = new File([blob], 'recording.webm', {type: 'audio/webm'});
+      const hotwordId = document.getElementById('recordHotwordId').value;
+      const fd = new FormData();
+      fd.append('action', 'browser_recording');
+      fd.append('hotword_id', hotwordId);
+      fd.append('recording_file', file);
+      const res = await fetch('/hotword-config', {method: 'POST', body: fd});
+      if (recStream) recStream.getTracks().forEach(t => t.stop());
+      location.reload();
+    } catch (e) {
+      setRecState('Upload-Fehler: ' + e);
+    }
+  };
+  mediaRecorder.stop();
+  setRecState('saving');
+}
+
+async function callRuntime(url) {
+  const out = document.getElementById('runtimeOut');
+  out.textContent = 'läuft ...';
+  try {
+    const res = await fetch(url, {method:'POST'});
+    const data = await res.json();
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (e) {
+    out.textContent = String(e);
+  }
+}
+</script>
+</body>
+</html>

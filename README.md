@@ -5,7 +5,9 @@ Reines Hotword-Listener-Lab fuer lokale Runtime + Family-Panel-Linking.
 ## Umfang
 - Hotword Runtime Service (FastAPI/Uvicorn) aus dem Hotword-Lab
 - Schlanker Manager (Flask) fuer:
+  - `/index` (Status + Runtime/Flask Controls)
   - `/link` (Portal URL + Registrierungstoken)
+  - `/hotword-config` (Multi-User Hotword-Profile, Samples, Aufnahme, Test)
   - `/api/portal/status`
   - `/api/portal/sync`
   - `/api/portal/relink`
@@ -35,8 +37,13 @@ Reines Hotword-Listener-Lab fuer lokale Runtime + Family-Panel-Linking.
 - `GET /api/runtime/status`
 - `POST /api/runtime/start`
 - `POST /api/runtime/stop`
+- `POST /api/runtime/restart`
 - `POST /api/runtime/reload-hotwords`
 - `POST /api/runtime/test-trigger`
+
+## Service-Controls
+- `POST /api/flask/restart`
+- `POST /api/flask/stop`
 
 ## Hinweise
 - Machine-ID und Portal-URL werden bevorzugt aus dem Deviceportal aufgeloest.
