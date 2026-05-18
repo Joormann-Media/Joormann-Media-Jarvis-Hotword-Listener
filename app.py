@@ -171,6 +171,30 @@ def index():
     return redirect("/link")
 
 
+@app.get("/health")
+def health():
+    return jsonify({"ok": True, "service": "hotword-listener-manager", "status": "ok"})
+
+
+@app.get("/info")
+def info():
+    cfg = load_config()
+    return jsonify(
+        {
+            "ok": True,
+            "service": "hotword-listener-manager",
+            "version": "0.1.0",
+            "endpoints": {
+                "link": "/link",
+                "portal_status": "/api/portal/status",
+                "portal_sync": "/api/portal/sync",
+                "runtime_status": "/api/runtime/status",
+            },
+            "listener": cfg.get("listener") or {},
+        }
+    )
+
+
 @app.route("/link", methods=["GET", "POST"])
 def link_page():
     cfg = load_config()
