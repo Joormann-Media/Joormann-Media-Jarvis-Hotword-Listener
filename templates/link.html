@@ -103,6 +103,37 @@
     <div class="kv"><strong>Outbound API-Key:</strong> {{ portal_status.outbound_api_key_masked or '—' }}</div>
     <div class="kv"><strong>Admin→Node Key aktiv:</strong> {{ portal_status.admin_api_key_configured and 'ja' or 'nein' }}</div>
   </div>
+
+  <div class="card">
+    <h3>User-Login & User-Linking</h3>
+    <div class="muted">Meldet einen Panel-Benutzer lokal im Listener an. Der User-Token wird für spätere userbezogene Flows gehalten.</div>
+    <div class="kv"><strong>User verlinkt:</strong> {{ user_link.linked and 'ja' or 'nein' }}</div>
+    <div class="kv"><strong>Username:</strong> {{ user_link.username or '—' }}</div>
+    <div class="kv"><strong>User ID:</strong> {{ user_link.user_id or '—' }}</div>
+    <div class="kv"><strong>Rollen:</strong> {{ user_link.roles|join(', ') if user_link.roles else '—' }}</div>
+    <div class="kv"><strong>User-Token:</strong> {{ user_link.token_masked or '—' }}</div>
+    <div class="kv"><strong>Verlinkt am:</strong> {{ user_link.linked_at or '—' }}</div>
+    <form method="post" style="margin-top:10px;">
+      <input type="hidden" name="action" value="user_login">
+      <div class="grid">
+        <div>
+          <label>Benutzerkennung (E-Mail/Username)</label>
+          <input name="identifier" placeholder="max@example.com" required>
+        </div>
+        <div>
+          <label>Passwort oder PIN</label>
+          <input name="password" type="password" placeholder="••••••••" required>
+        </div>
+      </div>
+      <div style="margin-top:10px;"><button type="submit">User einloggen und verlinken</button></div>
+    </form>
+    {% if user_link.linked %}
+    <form method="post" style="margin-top:10px;">
+      <input type="hidden" name="action" value="user_logout">
+      <button type="submit">User-Link entfernen (Logout lokal)</button>
+    </form>
+    {% endif %}
+  </div>
 </div>
 <script>
 (() => {

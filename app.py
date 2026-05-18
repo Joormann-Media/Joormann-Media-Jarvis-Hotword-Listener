@@ -104,6 +104,13 @@ def load_config() -> Dict[str, Any]:
     cfg.setdefault("listener", {})
     cfg["listener"].setdefault("hotword_service_url", os.getenv("HOTWORD_SERVICE_URL", "http://127.0.0.1:8120"))
     cfg["listener"].setdefault("dispatch_url", os.getenv("HOTWORD_RUNTIME_DISPATCH_URL", "https://joormann-family.de/admin/jarvis/chat?conversation=95"))
+    cfg.setdefault("user_link", {})
+    cfg["user_link"].setdefault("linked", False)
+    cfg["user_link"].setdefault("username", "")
+    cfg["user_link"].setdefault("user_id", None)
+    cfg["user_link"].setdefault("roles", [])
+    cfg["user_link"].setdefault("api_token", "")
+    cfg["user_link"].setdefault("linked_at", "")
     return cfg
 
 
@@ -197,6 +204,13 @@ def _hotword_service_health(url: str) -> Dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+def _mask_token(token: str) -> str:
+    t = str(token or "").strip()
+    if not t:
+        return ""
+    return ("*" * max(0, len(t) - 8)) + t[-8:]
+
+
 @app.get("/")
 def index():
     return redirect("/link")
@@ -232,52 +246,99 @@ def link_page():
     error = ""
     result = None
     if request.method == "POST":
-        portal_url = str(request.form.get("portal_url") or "").strip()
-        registration_token = str(request.form.get("registration_token") or cfg.get("portal", {}).get("registration_token") or "").strip()
-        node_name = str(request.form.get("node_name") or "Hotword Listener Workstation").strip()
-        if not portal_url or not registration_token:
-            error = "Portal-URL und Registrierungstoken sind erforderlich."
-        else:
-            payload = {
-                "registrationToken": registration_token,
-                "machineId": str(cfg.get("portal", {}).get("machine_id") or resolve_machine_id()),
-                "nodeName": node_name,
-                "service": "hotword-listener",
-                "host": socket.gethostname(),
-            }
-            try:
-                res = requests.post(f"{portal_url.rstrip('/')}/api/jarvis/node/register", json=payload, timeout=20)
-                data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}
-                if not res.ok:
-                    error = f"Register fehlgeschlagen ({res.status_code}): {data}"
-                else:
-                    root = _unwrap_panel_payload(data)
-                    auth = root.get("auth") or {}
-                    node = root.get("node") or {}
-                    new_client_id = str(auth.get("clientId") or "").strip()
-                    new_api_key = str(auth.get("apiKey") or "").strip()
-                    new_node_uuid = str(node.get("uuid") or "").strip()
-                    new_node_slug = str(node.get("slug") or "").strip()
-                    if not all([new_client_id, new_api_key, new_node_uuid, new_node_slug]):
-                        error = (
-                            "Register-Antwort unvollständig: erwartet auth.clientId, auth.apiKey, "
-                            f"node.uuid, node.slug. Antwort: {data}"
-                        )
-                        result = {"success": False, "register": data}
+        action = str(request.form.get("action") or "node_link").strip()
+        if action == "user_login":
+            portal_url = str((cfg.get("portal") or {}).get("url") or "").strip()
+            identifier = str(request.form.get("identifier") or "").strip()
+            password = str(request.form.get("password") or "").strip()
+            if not portal_url:
+                error = "Portal-URL fehlt für User-Login."
+            elif not identifier or not password:
+                error = "Benutzerkennung und Passwort/PIN sind erforderlich."
+            else:
+                payload = {
+                    "identifier": identifier,
+                    "password": password,
+                    "device_id": str((cfg.get("portal") or {}).get("machine_id") or resolve_machine_id()),
+                    "device_type": "hotword-listener",
+                    "device_name": str((cfg.get("portal") or {}).get("node_name") or socket.gethostname()),
+                }
+                try:
+                    res = requests.post(f"{portal_url.rstrip('/')}/api/login", json=payload, timeout=20)
+                    data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {"raw": res.text}
+                    if not res.ok:
+                        error = f"User-Login fehlgeschlagen ({res.status_code}): {data}"
                     else:
-                        cfg["portal"]["url"] = portal_url
-                        cfg["portal"]["registration_token"] = registration_token
-                        cfg["portal"]["client_id"] = new_client_id
-                        cfg["portal"]["api_key"] = new_api_key
-                        cfg["portal"]["node_uuid"] = new_node_uuid
-                        cfg["portal"]["node_slug"] = new_node_slug
-                        cfg["portal"]["node_name"] = node_name
+                        user = data.get("user") or {}
+                        token = str(data.get("token") or "").strip()
+                        cfg["user_link"]["linked"] = bool(token)
+                        cfg["user_link"]["username"] = str(user.get("username") or user.get("email") or identifier)
+                        cfg["user_link"]["user_id"] = user.get("id")
+                        cfg["user_link"]["roles"] = user.get("roles") if isinstance(user.get("roles"), list) else []
+                        cfg["user_link"]["api_token"] = token
+                        cfg["user_link"]["linked_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                         save_config(cfg)
-                        sync_result = _portal_sync(cfg)
-                        mcp_result = _portal_mcp_sync(cfg)
-                        result = {"success": True, "register": data, "sync": sync_result, "mcp": mcp_result}
-            except Exception as exc:
-                error = f"Portal nicht erreichbar: {exc}"
+                        result = {"success": True, "user_login": data}
+                except Exception as exc:
+                    error = f"User-Login Fehler: {exc}"
+        elif action == "user_logout":
+            cfg["user_link"] = {
+                "linked": False,
+                "username": "",
+                "user_id": None,
+                "roles": [],
+                "api_token": "",
+                "linked_at": "",
+            }
+            save_config(cfg)
+            result = {"success": True, "user_logout": True}
+        else:
+            portal_url = str(request.form.get("portal_url") or "").strip()
+            registration_token = str(request.form.get("registration_token") or cfg.get("portal", {}).get("registration_token") or "").strip()
+            node_name = str(request.form.get("node_name") or "Hotword Listener Workstation").strip()
+            if not portal_url or not registration_token:
+                error = "Portal-URL und Registrierungstoken sind erforderlich."
+            else:
+                payload = {
+                    "registrationToken": registration_token,
+                    "machineId": str(cfg.get("portal", {}).get("machine_id") or resolve_machine_id()),
+                    "nodeName": node_name,
+                    "service": "hotword-listener",
+                    "host": socket.gethostname(),
+                }
+                try:
+                    res = requests.post(f"{portal_url.rstrip('/')}/api/jarvis/node/register", json=payload, timeout=20)
+                    data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}
+                    if not res.ok:
+                        error = f"Register fehlgeschlagen ({res.status_code}): {data}"
+                    else:
+                        root = _unwrap_panel_payload(data)
+                        auth = root.get("auth") or {}
+                        node = root.get("node") or {}
+                        new_client_id = str(auth.get("clientId") or "").strip()
+                        new_api_key = str(auth.get("apiKey") or "").strip()
+                        new_node_uuid = str(node.get("uuid") or "").strip()
+                        new_node_slug = str(node.get("slug") or "").strip()
+                        if not all([new_client_id, new_api_key, new_node_uuid, new_node_slug]):
+                            error = (
+                                "Register-Antwort unvollständig: erwartet auth.clientId, auth.apiKey, "
+                                f"node.uuid, node.slug. Antwort: {data}"
+                            )
+                            result = {"success": False, "register": data}
+                        else:
+                            cfg["portal"]["url"] = portal_url
+                            cfg["portal"]["registration_token"] = registration_token
+                            cfg["portal"]["client_id"] = new_client_id
+                            cfg["portal"]["api_key"] = new_api_key
+                            cfg["portal"]["node_uuid"] = new_node_uuid
+                            cfg["portal"]["node_slug"] = new_node_slug
+                            cfg["portal"]["node_name"] = node_name
+                            save_config(cfg)
+                            sync_result = _portal_sync(cfg)
+                            mcp_result = _portal_mcp_sync(cfg)
+                            result = {"success": True, "register": data, "sync": sync_result, "mcp": mcp_result}
+                except Exception as exc:
+                    error = f"Portal nicht erreichbar: {exc}"
 
     portal = cfg.get("portal") or {}
     portal_status = {
@@ -297,6 +358,15 @@ def link_page():
         "node_name": str(portal.get("node_name") or "Hotword-Listener Workstation"),
     }
     listener = cfg.get("listener") or {}
+    user_link = cfg.get("user_link") or {}
+    user_link_status = {
+        "linked": bool(user_link.get("linked") and user_link.get("api_token")),
+        "username": user_link.get("username"),
+        "user_id": user_link.get("user_id"),
+        "roles": user_link.get("roles") if isinstance(user_link.get("roles"), list) else [],
+        "token_masked": _mask_token(str(user_link.get("api_token") or "")),
+        "linked_at": user_link.get("linked_at"),
+    }
     hotword_health = _hotword_service_health(str(listener.get("hotword_service_url") or "http://127.0.0.1:8120"))
     return render_template(
         "link.html",
@@ -305,6 +375,7 @@ def link_page():
         form=form,
         portal_status=portal_status,
         listener=listener,
+        user_link=user_link_status,
         hotword_health=hotword_health,
     )
 
