@@ -115,6 +115,16 @@ def _api_headers(api_key: str) -> Dict[str, str]:
     return {"X-API-Key": api_key, "Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
 
+def _unwrap_panel_payload(data: Any) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        return {}
+    # Panel responses are typically wrapped as {ok,message,data:{...}}
+    wrapped = data.get("data")
+    if isinstance(wrapped, dict):
+        return wrapped
+    return data
+
+
 def _portal_sync(cfg: Dict[str, Any]) -> Dict[str, Any]:
     portal = cfg.get("portal") or {}
     portal_url = str(portal.get("url") or "").strip()
@@ -241,8 +251,9 @@ def link_page():
                 if not res.ok:
                     error = f"Register fehlgeschlagen ({res.status_code}): {data}"
                 else:
-                    auth = data.get("auth") or {}
-                    node = data.get("node") or {}
+                    root = _unwrap_panel_payload(data)
+                    auth = root.get("auth") or {}
+                    node = root.get("node") or {}
                     new_client_id = str(auth.get("clientId") or "").strip()
                     new_api_key = str(auth.get("apiKey") or "").strip()
                     new_node_uuid = str(node.get("uuid") or "").strip()
@@ -340,8 +351,9 @@ def api_portal_relink():
         res = requests.post(f"{portal_url.rstrip('/')}/api/jarvis/node/relink", json=payload, timeout=20)
         data = res.json() if res.headers.get("content-type", "").startswith("application/json") else {"raw": res.text}
         if res.ok:
-            auth = data.get("auth") or {}
-            node = data.get("node") or {}
+            root = _unwrap_panel_payload(data)
+            auth = root.get("auth") or {}
+            node = root.get("node") or {}
             cfg["portal"]["url"] = portal_url
             cfg["portal"]["client_id"] = str(auth.get("clientId") or cfg["portal"].get("client_id") or "")
             cfg["portal"]["api_key"] = str(auth.get("apiKey") or cfg["portal"].get("api_key") or "")
