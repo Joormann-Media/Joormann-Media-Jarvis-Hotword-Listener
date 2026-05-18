@@ -37,7 +37,7 @@
   {% if error %}
     <div class="card err">{{ error }}</div>
   {% endif %}
-  {% if result %}
+  {% if result and result.success %}
     <div class="card ok">Verknüpfung erfolgreich. Node wurde registriert und synchronisiert.</div>
   {% endif %}
 

@@ -243,17 +243,28 @@ def link_page():
                 else:
                     auth = data.get("auth") or {}
                     node = data.get("node") or {}
-                    cfg["portal"]["url"] = portal_url
-                    cfg["portal"]["registration_token"] = registration_token
-                    cfg["portal"]["client_id"] = str(auth.get("clientId") or cfg["portal"].get("client_id") or "")
-                    cfg["portal"]["api_key"] = str(auth.get("apiKey") or cfg["portal"].get("api_key") or "")
-                    cfg["portal"]["node_uuid"] = str(node.get("uuid") or cfg["portal"].get("node_uuid") or "")
-                    cfg["portal"]["node_slug"] = str(node.get("slug") or cfg["portal"].get("node_slug") or "")
-                    cfg["portal"]["node_name"] = node_name
-                    save_config(cfg)
-                    sync_result = _portal_sync(cfg)
-                    mcp_result = _portal_mcp_sync(cfg)
-                    result = {"register": data, "sync": sync_result, "mcp": mcp_result}
+                    new_client_id = str(auth.get("clientId") or "").strip()
+                    new_api_key = str(auth.get("apiKey") or "").strip()
+                    new_node_uuid = str(node.get("uuid") or "").strip()
+                    new_node_slug = str(node.get("slug") or "").strip()
+                    if not all([new_client_id, new_api_key, new_node_uuid, new_node_slug]):
+                        error = (
+                            "Register-Antwort unvollständig: erwartet auth.clientId, auth.apiKey, "
+                            f"node.uuid, node.slug. Antwort: {data}"
+                        )
+                        result = {"success": False, "register": data}
+                    else:
+                        cfg["portal"]["url"] = portal_url
+                        cfg["portal"]["registration_token"] = registration_token
+                        cfg["portal"]["client_id"] = new_client_id
+                        cfg["portal"]["api_key"] = new_api_key
+                        cfg["portal"]["node_uuid"] = new_node_uuid
+                        cfg["portal"]["node_slug"] = new_node_slug
+                        cfg["portal"]["node_name"] = node_name
+                        save_config(cfg)
+                        sync_result = _portal_sync(cfg)
+                        mcp_result = _portal_mcp_sync(cfg)
+                        result = {"success": True, "register": data, "sync": sync_result, "mcp": mcp_result}
             except Exception as exc:
                 error = f"Portal nicht erreichbar: {exc}"
 
