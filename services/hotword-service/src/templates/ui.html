@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jarvis Hotword Lab</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-trainer-url="{{ trainer_url }}" data-runtime-engine="{{ runtime_engine }}">
+  <main class="page">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Jarvis V2</p>
+        <h1>Hotword Lab</h1>
+        <p class="lede">Lokale Hotword-Verwaltung, Trainingsvorbereitung und Runtime-Steuerung fuer persoenliche Wakewords wie jarvis, wally, diana oder jason.</p>
+        <p id="mic-capability-chip" class="status-chip status-chip-warn">Mikrofon-Check laeuft...</p>
+      </div>
+      <div class="hero-actions">
+        <a class="ghost-button" href="/health" target="_blank" rel="noreferrer">Health hotword-service</a>
+        <a class="ghost-button" href="{{ trainer_url }}/health" target="_blank" rel="noreferrer">Health hotword-trainer</a>
+        <a class="ghost-button" href="/assistant">Trainer-Assistent</a>
+      </div>
+    </section>
+
+    <section class="stats-grid">
+      <article class="stat-card">
+        <span>Listener</span>
+        <strong id="runtime-listener-running">-</strong>
+      </article>
+      <article class="stat-card">
+        <span>Engine</span>
+        <strong id="runtime-engine">-</strong>
+      </article>
+      <article class="stat-card">
+        <span>Aktive Hotwords</span>
+        <strong id="runtime-active-hotword-count">-</strong>
+      </article>
+      <article class="stat-card">
+        <span>Letztes Wakeword</span>
+        <strong id="runtime-detected-hotword">-</strong>
+      </article>
+      <article class="stat-card">
+        <span>Speaker</span>
+        <strong id="runtime-speaker">-</strong>
+      </article>
+      <article class="stat-card">
+        <span>Transcript</span>
+        <strong id="runtime-transcript">-</strong>
+      </article>
+    </section>
+
+    <nav class="tabs" aria-label="Hotword Lab Bereiche">
+      <button class="tab-button is-active" type="button" data-tab="dashboard">Dashboard</button>
+      <button class="tab-button" type="button" data-tab="ops">Status & Ops</button>
+      <button class="tab-button" type="button" data-tab="hotwords">Hotwords</button>
+      <button class="tab-button" type="button" data-tab="samples">Samples</button>
+      <button class="tab-button" type="button" data-tab="hotword-trainer">Hotword Trainer</button>
+      <button class="tab-button" type="button" data-tab="intent-trainer">Intent Trainer</button>
+      <button class="tab-button" type="button" data-tab="models">Modelle</button>
+      <button class="tab-button" type="button" data-tab="runtime">Runtime</button>
+      <button class="tab-button" type="button" data-tab="detection">Detection Test</button>
+    </nav>
+
+    <section class="tab-panel is-active" data-panel="dashboard">
+      <div class="panel-grid panel-grid-wide">
+        <article class="card">
+          <div class="section-head">
+            <h2>Dashboard</h2>
+            <button id="refresh-hotwords" type="button" class="ghost-button">Daten aktualisieren</button>
+          </div>
+          <p class="status-text">Der Hauptpfad ist jetzt lokal und offline: Samples sammeln, Datensatz vorbereiten, lokalen Trainingsjob anlegen und danach ein Laufzeitmodell zuordnen. Porcupine bleibt optional als Legacy-Pfad verfuegbar.</p>
+          <dl class="runtime-summary">
+            <div><dt>Aktive Runtime-Hotwords</dt><dd id="runtime-active-hotwords">-</dd></div>
+            <div><dt>Autostart</dt><dd id="runtime-configured-enabled">-</dd></div>
+            <div><dt>Cooldown</dt><dd id="runtime-cooldown">-</dd></div>
+            <div><dt>Letzte Datei</dt><dd id="runtime-recording-file">-</dd></div>
+            <div><dt>Antwort-Audio</dt><dd id="runtime-response-audio">-</dd></div>
+          </dl>
+        </article>
+
+        <article class="card">
+          <h2>Service Ergebnis</h2>
+          <pre id="result-box">Noch keine Aktion ausgefuehrt.</pre>
+        </article>
+
+        <article class="card">
+          <h2>Runtime Rohdaten</h2>
+          <pre id="runtime-status-box">Noch kein Runtime-Status geladen.</pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="tab-panel" data-panel="ops">
+      <div class="panel-grid">
+        <article class="card">
+          <div class="section-head">
+            <h2>Service Status Hub</h2>
+            <button id="status-refresh" type="button" class="ghost-button">Status neu laden</button>
+          </div>
+          <p class="status-text">Zentrale Übersicht für Version, Ports, UI-Links, Endpoint-Checks und letzte Fehler.</p>
+          <dl class="runtime-summary">
+            <div><dt>Version</dt><dd id="status-version">-</dd></div>
+            <div><dt>Port</dt><dd id="status-port">-</dd></div>
+            <div><dt>Letztes Update</dt><dd id="status-update">-</dd></div>
+            <div><dt>Letzter Fehler</dt><dd id="status-last-error">-</dd></div>
+          </dl>
+          <div class="button-row">
+            <a id="status-link-hotword-ui" class="ghost-button" target="_blank" rel="noreferrer">Hotword UI</a>
+            <a id="status-link-assistant" class="ghost-button" target="_blank" rel="noreferrer">Assistant</a>
+            <a id="status-link-speaker-ui" class="ghost-button" target="_blank" rel="noreferrer">Speaker UI</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>Remote Runtime Actions</h2>
+          <div class="button-row">
+            <button id="status-runtime-start" type="button">Runtime Start</button>
+            <button id="status-runtime-stop" type="button">Runtime Stop</button>
+            <button id="status-runtime-reload" type="button">Hotwords Reload</button>
+            <button id="status-runtime-trigger" type="button">Test Trigger</button>
+          </div>
+          <p id="status-runtime-feedback" class="status-text">Noch keine Runtime-Action ausgeführt.</p>
+        </article>
+
+        <article class="card">
+          <h2>Lab Update</h2>
+          <div class="button-row">
+            <button id="status-update-check" type="button" class="ghost-button">Update prüfen</button>
+            <button id="status-update-apply" type="button">Update anwenden</button>
+          </div>
+          <p id="status-update-feedback" class="status-text">Noch kein Update-Run.</p>
+        </article>
+      </div>
+      <article class="card">
+        <h2>Status JSON</h2>
+        <pre id="status-box">Noch kein /status geladen.</pre>
+      </article>
+    </section>
+
+    <section class="tab-panel" data-panel="hotwords">
+      <div class="panel-grid">
+        <article class="card">
+          <h2>Hotword anlegen</h2>
+          <form id="hotword-form">
+            <label>Hotword ID
+              <input name="id" placeholder="wally" required>
+            </label>
+            <label>Anzeigename
+              <input name="label" placeholder="Wally" required>
+            </label>
+            <label>Phrase(n)
+              <input id="hotword-phrase-create" name="phrase" placeholder="wally, jarvis oder wally jarvis" required>
+              <small class="status-text">Mehrere möglich. Auto-Trennung bei Leerzeichen oder Komma.</small>
+            </label>
+            <label>Speaker-Zuordnung
+              <select id="create-speakers" name="speaker_ids" multiple></select>
+            </label>
+            <label>Detection Mode
+              <input name="detection_mode" placeholder="personal">
+            </label>
+            <label>Training Backend
+              <input name="training_backend" value="openwakeword-local" placeholder="openwakeword-local">
+            </label>
+            <label>Engine Type
+              <input name="engine_type" value="local" placeholder="local">
+            </label>
+            <label>Model Format
+              <input name="model_format" value="onnx" placeholder="onnx">
+            </label>
+            <label>Model Path optional
+              <input name="model_path" placeholder="/pfad/zum/modell.onnx">
+            </label>
+            <label>Sensitivity / Threshold
+              <input name="sensitivity" type="number" step="0.01" min="0" max="1" placeholder="0.55">
+            </label>
+            <label>Notiz
+              <textarea name="notes" rows="3" placeholder="Bea persoenliches Wakeword"></textarea>
+            </label>
+            <label class="checkbox">
+              <input name="runtime_enabled" type="checkbox">
+              In Runtime aktiv
+            </label>
+            <button type="submit">Hotword speichern</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <h2>Hotword bearbeiten</h2>
+          <form id="hotword-edit-form">
+            <label>Hotword
+              <select id="edit-hotword" required></select>
+            </label>
+            <label>Anzeigename
+              <input id="edit-label" placeholder="Wally">
+            </label>
+            <label>Phrase(n)
+              <input id="edit-phrase" placeholder="wally, jarvis">
+              <small class="status-text">Mehrere möglich. Auto-Trennung bei Leerzeichen oder Komma.</small>
+            </label>
+            <label>Speaker-Zuordnung
+              <select id="edit-speakers" multiple></select>
+            </label>
+            <label>Detection Mode
+              <input id="edit-detection-mode" placeholder="personal">
+            </label>
+            <label>Training Backend
+              <input id="edit-training-backend" placeholder="openwakeword-local">
+            </label>
+            <label>Engine Type
+              <input id="edit-engine-type" placeholder="local">
+            </label>
+            <label>Model Format
+              <input id="edit-model-format" placeholder="onnx">
+            </label>
+            <label>Model Path
+              <input id="edit-model-path" placeholder="/pfad/zum/modell.onnx">
+            </label>
+            <label>Sensitivity / Threshold
+              <input id="edit-sensitivity" type="number" step="0.01" min="0" max="1" placeholder="0.55">
+            </label>
+            <label>Notiz
+              <textarea id="edit-notes" rows="3"></textarea>
+            </label>
+            <label class="checkbox">
+              <input id="edit-active" type="checkbox" checked>
+              Aktiv
+            </label>
+            <label class="checkbox">
+              <input id="edit-runtime-enabled" type="checkbox">
+              Runtime aktiv
+            </label>
+            <button type="submit">Hotword aktualisieren</button>
+            <small id="hotword-edit-status" class="status-text">Noch keine Aenderung gespeichert.</small>
+          </form>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="section-head">
+          <h2>Vorhandene Hotwords</h2>
+          <span class="status-text">Mehrere Hotwords pro Person bleiben moeglich, inklusive personal/shared Detection Mode.</span>
+        </div>
+        <div class="button-row">
+          <button id="delete-all-hotwords" type="button">Alle Hotwords loeschen</button>
+        </div>
+        <div id="hotword-list" class="hotword-list"></div>
+      </article>
+    </section>
+
+    <section class="tab-panel" data-panel="samples">
+      <div class="panel-grid">
+        <article class="card">
+          <h2>Samples hochladen</h2>
+          <form id="upload-form">
+            <label>Hotword
+              <select id="upload-hotword" required></select>
+            </label>
+            <label>Datei
+              <input id="upload-file" type="file" accept="audio/*" required>
+            </label>
+            <button type="submit">Upload starten</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <h2>Browser-Aufnahme</h2>
+          <label>Hotword
+            <select id="record-hotword" required></select>
+          </label>
+          <div class="button-row">
+            <button id="start-recording" type="button">Aufnahme starten</button>
+            <button id="stop-recording" type="button" disabled>Stop</button>
+          </div>
+          <p id="recording-status" class="status-text">Bereit fuer Mikrofonaufnahme.</p>
+        </article>
+      </div>
+
+      <article class="card">
+        <h2>Hotword-Details / Samples</h2>
+        <pre id="hotword-detail-box">Noch kein Hotword ausgewaehlt.</pre>
+      </article>
+    </section>
+
+    <section class="tab-panel" data-panel="hotword-trainer">
+      <div class="panel-grid">
+        <article class="card">
+          <h2>Hotword Trainer</h2>
+          <p class="status-text">Nur für Wakeword-Training: Aufnahme oder Upload als Hotword-Sample speichern, optional direkt transkribieren.</p>
+          <p id="hotword-trainer-mic-hint" class="status-text">Mikrofonstatus wird geprüft...</p>
+          <form id="hotword-trainer-form">
+            <label>Hotword
+              <select id="hotword-trainer-hotword" required></select>
+            </label>
+            <label>Audio-Datei (optional, statt Live-Aufnahme)
+              <input id="hotword-trainer-audio-file" type="file" accept="audio/*">
+            </label>
+            <div class="button-row">
+              <button id="hotword-trainer-start-recording" type="button">Hotword Aufnahme starten</button>
+              <button id="hotword-trainer-stop-recording" type="button" disabled>Stop</button>
+            </div>
+            <button type="submit">Hotword-Sample senden</button>
+          </form>
+          <p id="hotword-trainer-status" class="status-text">Bereit.</p>
+        </article>
+
+        <article class="card">
+          <h2>Hotword Ergebnis</h2>
+          <pre id="hotword-trainer-box">Noch kein Hotword-Run ausgeführt.</pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="tab-panel" data-panel="intent-trainer">
+      <div class="panel-grid">
+        <article class="card">
+          <h2>Intent Trainer</h2>
+          <p class="status-text">Aufnahme transkribieren und als kompletten Datensatz (Intent/Slot/Memory) ins Family-Panel schreiben.</p>
+          <p id="intent-trainer-mic-hint" class="status-text">Mikrofonstatus wird geprüft...</p>
+          <form id="intent-trainer-form">
+            <label>Hotword
+              <select id="intent-trainer-hotword" required></select>
+            </label>
+            <label>Client
+              <select id="intent-trainer-client" required></select>
+            </label>
+            <label>User
+              <select id="intent-trainer-user" required></select>
+            </label>
+            <label>Jarvis Profil (optional)
+              <select id="intent-trainer-profile">
+                <option value="">Keins</option>
+              </select>
+            </label>
+            <label>Intent Key
+              <input id="intent-trainer-intent-key" placeholder="demo.light_on">
+            </label>
+            <label>Intent Name
+              <input id="intent-trainer-intent-name" placeholder="Licht einschalten">
+            </label>
+            <label>Handler Service
+              <input id="intent-trainer-handler-service" placeholder="jarvis.smarthome">
+            </label>
+            <label>Handler Action
+              <input id="intent-trainer-handler-action" placeholder="switch_on">
+            </label>
+            <label>Slot Key
+              <input id="intent-trainer-slot-key" placeholder="room">
+            </label>
+            <label>Memory Fact Key
+              <input id="intent-trainer-memory-key" placeholder="user.room.last">
+            </label>
+            <label>Audio-Datei (optional, statt Live-Aufnahme)
+              <input id="intent-trainer-audio-file" type="file" accept="audio/*">
+            </label>
+            <div class="button-row">
+              <button id="intent-trainer-start-recording" type="button">Intent Aufnahme starten</button>
+              <button id="intent-trainer-stop-recording" type="button" disabled>Stop</button>
+            </div>
+            <button type="submit">Intent Datensatz senden</button>
+          </form>
+          <p id="intent-trainer-status" class="status-text">Bereit.</p>
+        </article>
+
+        <article class="card">
+          <h2>Intent Ergebnis</h2>
+          <pre id="intent-trainer-box">Noch kein Intent-Run ausgeführt.</pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="tab-panel" data-panel="models">
+      <div class="panel-grid">
+        <article class="card">
+          <h2>Lokales Training vorbereiten</h2>
+          <p class="status-text">Der bevorzugte Pfad: Datensatz bauen, lokalen Trainingsjob vorbereiten, Modell exportieren und danach im Hotword hinterlegen.</p>
+          <form id="trainer-dataset-form">
+            <label>Hotword
+              <select id="trainer-dataset-hotword" required></select>
+            </label>
+            <button type="submit">Datensatz vorbereiten</button>
+          </form>
+          <form id="trainer-train-form">
+            <label>Hotword
+              <select id="trainer-train-hotword" required></select>
+            </label>
+            <button type="submit">Trainingsjob starten</button>
+          </form>
+          <form id="trainer-export-form">
+            <label>Hotword
+              <select id="trainer-export-hotword" required></select>
+            </label>
+            <button type="submit">Modell exportieren</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <h2>Modellstatus</h2>
+          <pre id="model-status-box">Noch kein Modellstatus abgefragt.</pre>
+        </article>
+
+        <article class="card">
+          <h2>Legacy Import optional</h2>
+          <p class="status-text">Porcupine und `.ppn` bleiben nur noch als Legacy-/Kompatibilitaetspfad sichtbar, nicht als Haupt-Workflow.</p>
+          <form id="model-upload-form">
+            <label>Hotword
+              <select id="model-hotword" required></select>
+            </label>
+            <label>.ppn Datei
+              <input id="model-file" type="file" accept=".ppn" required>
+            </label>
+            <button type="submit">Legacy-Modell importieren</button>
+          </form>
+        </article>
+      </div>
+    </section>
+
+    <section class="tab-panel" data-panel="runtime">
+      <article class="card">
+        <div class="section-head">
+          <h2>Listener Runtime</h2>
+          <div class="button-row">
+            <button id="runtime-start" type="button">Runtime starten</button>
+            <button id="runtime-stop" type="button">Runtime stoppen</button>
+            <button id="runtime-autostart-enable" type="button">Autostart EIN</button>
+            <button id="runtime-autostart-disable" type="button">Autostart AUS</button>
+            <button id="runtime-reload-hotwords" type="button">Hotwords neu laden</button>
+            <button id="runtime-test-trigger" type="button">Test Trigger</button>
+            <button id="runtime-refresh" type="button" class="ghost-button">Status neu laden</button>
+          </div>
+        </div>
+        <p class="status-text">Die Runtime bleibt nutzbar. Lokal trainierte Modelle sind der Hauptpfad, Porcupine kann optional als Legacy-Engine weiterlaufen, wenn Access Key und `.ppn`-Dateien vorhanden sind.</p>
+        <div class="button-row">
+          <label style="min-width: 320px; flex: 1;">Runtime Mikrofon (arecord)
+            <select id="runtime-input-device-select"></select>
+          </label>
+          <button id="runtime-input-device-apply" type="button">Runtime-Mikro übernehmen</button>
+        </div>
+        <p id="runtime-input-device-status" class="status-text">Noch kein Runtime-Mikro als Standard gesetzt.</p>
+        <dl class="runtime-summary">
+          <div><dt>Listener</dt><dd id="runtime-listener-running-runtime">-</dd></div>
+          <div><dt>Autostart</dt><dd id="runtime-configured-enabled-runtime">-</dd></div>
+          <div><dt>Engine</dt><dd id="runtime-engine-runtime">-</dd></div>
+          <div><dt>Hotwords</dt><dd id="runtime-active-hotwords-runtime">-</dd></div>
+          <div><dt>Cooldown</dt><dd id="runtime-cooldown-runtime">-</dd></div>
+          <div><dt>Wakeword</dt><dd id="runtime-detected-hotword-runtime">-</dd></div>
+          <div><dt>Dispatch</dt><dd id="runtime-dispatch-runtime">-</dd></div>
+        </dl>
+        <pre id="runtime-status-box-runtime">Noch kein Runtime-Status geladen.</pre>
+      </article>
+
+      <article class="card">
+        <div class="section-head">
+          <h2>Mikrofon Pegel & Empfindlichkeit</h2>
+          <div class="button-row">
+            <button id="mic-meter-start" type="button">Live-Meter starten</button>
+            <button id="mic-meter-stop" type="button" disabled>Live-Meter stoppen</button>
+          </div>
+        </div>
+        <p class="status-text">Pegel prüfen und Runtime nachjustieren, damit Wakeword auch aus größerer Entfernung sauber erkannt wird.</p>
+        <label>Mikrofon Quelle
+          <select id="mic-device-select"></select>
+        </label>
+        <small id="mic-device-label" class="status-text">Noch keine Quelle aktiv.</small>
+        <div class="meter-grid">
+          <div>
+            <label>RMS (Live)</label>
+            <div class="level-track"><span id="mic-rms-bar" class="level-fill"></span></div>
+            <small id="mic-rms-text" class="status-text">-</small>
+          </div>
+          <div>
+            <label>Peak (Live)</label>
+            <div class="level-track"><span id="mic-peak-bar" class="level-fill level-fill-peak"></span></div>
+            <small id="mic-peak-text" class="status-text">-</small>
+          </div>
+        </div>
+        <canvas id="mic-wave-canvas" class="mic-wave-canvas" width="960" height="120"></canvas>
+        <div class="button-row">
+          <button id="runtime-audio-probe-run" type="button">Runtime Mikro testen (3s)</button>
+        </div>
+        <p id="runtime-audio-probe-status" class="status-text">Noch kein Runtime-Mikrotest ausgeführt.</p>
+        <audio id="runtime-audio-probe-player" controls preload="none" style="width: 100%;"></audio>
+        <form id="runtime-audio-tuning-form">
+          <label>Input Gain (Verstärkung)
+            <input id="runtime-input-gain" type="range" min="0.1" max="8" step="0.05" value="1">
+            <small id="runtime-input-gain-text" class="status-text">1.00x</small>
+          </label>
+          <label>Minimaler Erkennungsscore
+            <input id="runtime-min-score" type="range" min="0.3" max="0.95" step="0.01" value="0.62">
+            <small id="runtime-min-score-text" class="status-text">0.62</small>
+          </label>
+          <label>Min RMS Faktor (Lautstärke-Gate)
+            <input id="runtime-min-rms-factor" type="range" min="0.05" max="1.5" step="0.01" value="0.35">
+            <small id="runtime-min-rms-factor-text" class="status-text">0.35</small>
+          </label>
+          <label>Required Hits (Treffer in Folge)
+            <input id="runtime-required-hits" type="range" min="1" max="6" step="1" value="2">
+            <small id="runtime-required-hits-text" class="status-text">2</small>
+          </label>
+          <div class="button-row">
+            <button type="submit">Empfindlichkeit speichern</button>
+            <button id="runtime-audio-tuning-refresh" type="button" class="ghost-button">Werte neu laden</button>
+          </div>
+          <p id="runtime-audio-tuning-status" class="status-text">Noch nicht geladen.</p>
+        </form>
+      </article>
+    </section>
+
+    <section class="tab-panel" data-panel="detection">
+      <div class="panel-grid">
+        <article class="card">
+          <h2>Detection Test</h2>
+          <form id="detect-form">
+            <label>Testdatei
+              <input id="detect-file" type="file" accept="audio/*">
+            </label>
+            <label>Hotword optional
+              <select id="detect-hotword">
+                <option value="">Automatisch</option>
+              </select>
+            </label>
+            <button type="submit">Detect ausfuehren</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <h2>Trainer Status</h2>
+          <pre id="trainer-status-box">Noch kein Trainer-Status geladen.</pre>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

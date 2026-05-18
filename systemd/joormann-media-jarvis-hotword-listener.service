@@ -1,0 +1,14 @@
+[Unit]
+Description=Joormann Media Jarvis Hotword Listener
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/Joormann-Media-Jarvis-Hotword-Listener
+ExecStart=%h/projects/Joormann-Media-Jarvis-Hotword-Listener/scripts/start-dev.sh
+ExecStop=%h/projects/Joormann-Media-Jarvis-Hotword-Listener/scripts/stop-dev.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

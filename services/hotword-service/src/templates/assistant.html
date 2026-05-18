@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jarvis Hotword Assistant</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-trainer-url="{{ trainer_url }}">
+  <main class="page">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Jarvis V2</p>
+        <h1>Trainer-Assistent</h1>
+        <p class="lede">Geführter Ablauf für Hotword-Erstellung mit mehreren Samples und danach Intent-Erstellung mit vorhandenem Hotword.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="ghost-button" href="/ui">Zurück zum Lab</a>
+      </div>
+    </section>
+
+    <section class="assistant-grid">
+      <article class="card wizard-card">
+        <div class="section-head">
+          <h2>Hotword-Assistent</h2>
+          <span class="status-text">Schrittweise: erstellen → mehrere Samples → fertig</span>
+        </div>
+        <ol class="wizard-steps" id="hotword-steps">
+          <li class="is-active" data-step="1">1. Hotword</li>
+          <li data-step="2">2. Samples</li>
+          <li data-step="3">3. Abschluss</li>
+        </ol>
+
+        <div class="wizard-pane is-active" data-pane="hotword-1">
+          <form id="hotword-create-form">
+            <label><span class="label-title">Hotword ID <button type="button" class="help-icon" title="Technischer Key, eindeutig und stabil. Beispiel: hey_jarvis."><i data-lucide="help-circle"></i></button></span>
+              <input id="hotword-id" placeholder="hey_jarvis" required>
+            </label>
+            <label><span class="label-title">Anzeigename <button type="button" class="help-icon" title="Lesbarer Name in UI-Listen und Statusanzeigen."><i data-lucide="help-circle"></i></button></span>
+              <input id="hotword-label" placeholder="Hey Jarvis" required>
+            </label>
+            <label><span class="label-title">Phrase(n) <button type="button" class="help-icon" title="Mehrere Trigger-Phrasen möglich. Trennung per Leerzeichen oder Komma, z. B. hey, jarvis, computer."><i data-lucide="help-circle"></i></button></span>
+              <input id="hotword-phrase" placeholder="hey, jarvis, computer" required>
+              <small class="status-text">Auto-Trennung bei Leerzeichen oder Komma.</small>
+            </label>
+            <label><span class="label-title">Oder vorhandenes Hotword nutzen <button type="button" class="help-icon" title="Nutzt ein bereits vorhandenes Hotword vom Zielgerät statt Neu-Anlage."><i data-lucide="help-circle"></i></button></span>
+              <select id="hotword-existing"></select>
+            </label>
+            <label><span class="label-title">Priorität <button type="button" class="help-icon" title="Niedriger Wert = höhere Priorität in Sortierung und Auswahl."><i data-lucide="help-circle"></i></button></span>
+              <input id="hotword-priority" type="number" min="0" step="1" value="100">
+            </label>
+            <label class="checkbox">
+              <input id="hotword-default" type="checkbox">
+              Als Default-Hotword setzen
+            </label>
+            <div class="button-row">
+              <button type="submit">Hotword erstellen</button>
+              <button type="button" class="ghost-button" id="hotword-use-existing">Vorhandenes nutzen</button>
+            </div>
+            <div class="button-row">
+              <button type="button" class="ghost-button" id="hotword-save-priority">Priorität speichern</button>
+              <button type="button" class="ghost-button" id="hotword-set-default">Als Default setzen</button>
+            </div>
+          </form>
+          <pre id="hotword-order-box">Reihenfolge wird geladen...</pre>
+        </div>
+
+        <div class="wizard-pane" data-pane="hotword-2">
+          <p class="status-text">Aktives Hotword: <strong id="hotword-active-id">-</strong></p>
+          <label><span class="label-title">Audio-Datei hochladen <button type="button" class="help-icon" title="Lädt ein Sample direkt in den Hotword-Samplepool."><i data-lucide="help-circle"></i></button></span>
+            <input id="hotword-upload-file" type="file" accept="audio/*">
+          </label>
+          <div class="button-row">
+            <button type="button" id="hotword-upload-btn">Upload senden</button>
+          </div>
+
+          <div class="button-row">
+            <button type="button" id="hotword-record-start">Aufnahme starten</button>
+            <button type="button" id="hotword-record-stop" disabled>Stop</button>
+            <button type="button" id="hotword-record-send" disabled>Aufnahme senden</button>
+          </div>
+          <p id="hotword-record-status" class="status-text">Bereit für mehrere Aufnahmen.</p>
+
+          <div class="button-row">
+            <button type="button" id="hotword-refresh-samples" class="ghost-button">Samples aktualisieren</button>
+            <button type="button" id="hotword-next-to-finish">Weiter</button>
+          </div>
+          <pre id="hotword-samples-box">Noch keine Samples geladen.</pre>
+        </div>
+
+        <div class="wizard-pane" data-pane="hotword-3">
+          <p class="status-text">Hotword-Flow abgeschlossen.</p>
+          <p>Du kannst jetzt direkt zum Intent-Assistenten wechseln.</p>
+          <button type="button" id="copy-hotword-to-intent">Hotword im Intent-Assistent setzen</button>
+        </div>
+      </article>
+
+      <article class="card wizard-card">
+        <div class="section-head">
+          <h2>Intent-Assistent</h2>
+          <span class="status-text">Schrittweise: Hotword wählen → Datensatz senden</span>
+        </div>
+        <ol class="wizard-steps" id="intent-steps">
+          <li class="is-active" data-step="1">1. Hotword</li>
+          <li data-step="2">2. Intent-Ingest</li>
+        </ol>
+
+        <div class="wizard-pane is-active" data-pane="intent-1">
+          <label><span class="label-title">Vorhandenes Hotword wählen <button type="button" class="help-icon" title="Dieses Hotword wird als Kontext für den Intent-Datensatz verwendet."><i data-lucide="help-circle"></i></button></span>
+            <select id="intent-hotword-select"></select>
+          </label>
+          <button type="button" id="intent-next">Weiter</button>
+        </div>
+
+        <div class="wizard-pane" data-pane="intent-2">
+          <p class="status-text">Hotword: <strong id="intent-active-hotword">-</strong></p>
+
+          <label><span class="label-title">Client <button type="button" class="help-icon" title="Ziel-Client im Family-Panel, an den der Datensatz geschrieben wird."><i data-lucide="help-circle"></i></button></span>
+            <select id="intent-client-select"></select>
+          </label>
+          <label><span class="label-title">User <button type="button" class="help-icon" title="Ziel-Benutzer für Intent/Memory-Einträge."><i data-lucide="help-circle"></i></button></span>
+            <select id="intent-user-select"></select>
+          </label>
+          <label><span class="label-title">Profil (optional) <button type="button" class="help-icon" title="Optionales Jarvis-Profil; leer lässt den Datensatz profil-unabhängig."><i data-lucide="help-circle"></i></button></span>
+            <select id="intent-profile-select">
+              <option value="">Keins</option>
+            </select>
+          </label>
+          <label><span class="label-title">Fallback Client-ID (falls Bootstrap fehlt) <button type="button" class="help-icon" title="Manuelle ID, falls Bootstrap wegen Token/Netz nicht geladen werden konnte."><i data-lucide="help-circle"></i></button></span>
+            <input id="intent-client-manual" type="number" min="1" placeholder="1">
+          </label>
+          <label><span class="label-title">Fallback User-ID (falls Bootstrap fehlt) <button type="button" class="help-icon" title="Manuelle User-ID als Fallback."><i data-lucide="help-circle"></i></button></span>
+            <input id="intent-user-manual" type="number" min="1" placeholder="1">
+          </label>
+
+          <label><span class="label-title">Intent Key <button type="button" class="help-icon" title="Technischer Intent-Schlüssel (z. B. demo.light_on)."><i data-lucide="help-circle"></i></button></span>
+            <input id="intent-key" placeholder="demo.light_on">
+          </label>
+          <label><span class="label-title">Intent Name <button type="button" class="help-icon" title="Lesbarer Name für UI und Pflege."><i data-lucide="help-circle"></i></button></span>
+            <input id="intent-name" placeholder="Licht einschalten">
+          </label>
+          <label><span class="label-title">Handler Service <button type="button" class="help-icon" title="Service, der die Aktion ausführt (z. B. jarvis.smarthome)."><i data-lucide="help-circle"></i></button></span>
+            <input id="intent-handler-service" placeholder="jarvis.smarthome">
+          </label>
+          <label><span class="label-title">Handler Action <button type="button" class="help-icon" title="Methode/Aktion im Service (z. B. switch_on)."><i data-lucide="help-circle"></i></button></span>
+            <input id="intent-handler-action" placeholder="switch_on">
+          </label>
+          <label><span class="label-title">Slot Key <button type="button" class="help-icon" title="Parametername, der aus dem Satz extrahiert wird."><i data-lucide="help-circle"></i></button></span>
+            <input id="intent-slot-key" placeholder="room">
+          </label>
+          <label><span class="label-title">Memory Fact Key <button type="button" class="help-icon" title="Schlüssel für LV1-Memory, z. B. user.room.last."><i data-lucide="help-circle"></i></button></span>
+            <input id="intent-memory-key" placeholder="user.room.last">
+          </label>
+
+          <label><span class="label-title">Audio-Datei hochladen <button type="button" class="help-icon" title="Alternativ zur Mikroaufnahme kannst du hier eine Audiodatei senden."><i data-lucide="help-circle"></i></button></span>
+            <input id="intent-upload-file" type="file" accept="audio/*">
+          </label>
+          <div class="button-row">
+            <button type="button" id="intent-record-start">Aufnahme starten</button>
+            <button type="button" id="intent-record-stop" disabled>Stop</button>
+            <button type="button" id="intent-send-btn">Intent-Datensatz senden</button>
+          </div>
+          <p id="intent-record-status" class="status-text">Bereit.</p>
+          <pre id="intent-result-box">Noch kein Intent-Ingest ausgeführt.</pre>
+        </div>
+      </article>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js"></script>
+  <script src="/static/assistant.js"></script>
+</body>
+</html>
